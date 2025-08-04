@@ -1,0 +1,1 @@
+Hello <|endoftext|> world. This is a test file for BPE tokenizer.
