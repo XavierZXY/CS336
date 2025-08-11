@@ -121,8 +121,67 @@ def pretokenize(
     return tokens
 
 
-def merge():
-    pass
+def merge(
+    counts: dict[tuple[int, int], int],
+    index_dict: dict[tuple[int, int], set[int]],
+    pretokens: list[list[int]],
+    max_pair: tuple[int, int],
+    new_index: int,
+):
+    """Merge the pairs with highest frequency and update counts, index_dict
+
+    Args:
+        counts (dict[tuple[int, int], int]): A dictionary mapping token pairs to their merge counts.
+        index_dict (dict[tuple[int, int], set[int]]): A dictionary mapping token pairs to their indices in the pretokens list.
+        pretokens (list[list[int]]): The list of pretokenized input.
+        max_pair (tuple[int, int]): The token pair with the highest merge count.
+        new_index (int): The index of the newly created token.
+    """
+    index_set = index_dict[max_pair]
+    for i in index_set:
+        pretoken = pretokens[i]
+        new_pretoken = []
+
+        pos_list = []  # store positions of max_pair for each new pretoken after merge
+        pos = 0  # record the new position of new_index in new_pretoken
+        j = 0
+        # replace max_pair with new_index in each pretoken
+        while j < len(pretoken):
+            # use the new_index to replace
+            if (j < len(pretoken) - 1) and ((pretoken[j], pretoken[j + 1]) == max_pair):
+                new_pretoken.append(new_index)
+                pos_list.append(pos)
+                j += 2  # Skip the next token as it is part of the pair
+            else:
+                new_pretoken.append(pretoken[j])
+                j += 1
+            pos += 1
+
+        # update counts and index_dict
+        for pos in pos_list:
+            counts[max_pair] -= 1
+
+            if pos > 0:
+                # deal with the left position
+                if new_pretoken[pos - 1] == new_index:
+                    counts[(max_pair[1], max_pair[0])] -= 1
+                else:
+                    counts[(new_pretoken[pos - 1], max_pair[0])] -= 1
+
+                counts[(new_pretoken[pos - 1], new_pretoken[pos])] += 1
+                index_dict[(new_pretoken[pos - 1], new_pretoken[pos])].add(i)
+
+            if pos < len(new_pretoken) - 1:
+                # deal with the right position
+                if new_pretoken[pos + 1] == new_index:
+                    counts[(max_pair[1], max_pair[0])] -= 1
+                else:
+                    counts[(max_pair[1], new_pretoken[pos + 1])] -= 1
+
+                counts[(new_pretoken[pos], new_pretoken[pos + 1])] += 1
+                index_dict[(new_pretoken[pos], new_pretoken[pos + 1])].add(i)
+
+        pretokens[i] = new_pretoken
 
 
 def train_bpe(
@@ -190,7 +249,6 @@ def train_bpe(
 
     pretokens = [token for tokens in pretokens_list for token in tokens]
     log.info(f"Total pretokens: {len(pretokens)}")
-    pass
     # Merge pretokens into a single string
     counts = defaultdict(int)
     ## store pretoken location for each pair
@@ -200,6 +258,7 @@ def train_bpe(
             counts[index1, index2] += 1
             index_dict[index1, index2].add(j)
     for i in range(num_merges):
+        # for i in range(5):
         # Prefer lexicographically greater tokens
         max_pair = max(
             counts.items(),
@@ -214,7 +273,13 @@ def train_bpe(
         new_index = 256 + len(special_tokens) + i
         vocab[new_index] = vocab[index1] + vocab[index2]
         merges.append((vocab[index1], vocab[index2]))
-
+        log.info(
+            f"Counts: {counts}, \n"
+            f"index_dict: {index_dict}, \n"
+            f"pretokens: {pretokens}, \n"
+            f"max_pair: {max_pair}, \n"
+            f"new_index: {new_index}"
+        )
         merge(counts, index_dict, pretokens, max_pair, new_index)
 
     return (vocab, merges)
