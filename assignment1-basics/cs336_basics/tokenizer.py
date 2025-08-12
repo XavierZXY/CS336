@@ -1,6 +1,7 @@
 import logging
 import os
 from collections import defaultdict
+from collections.abc import Iterable, Iterator
 from multiprocessing import Process, Queue
 from typing import BinaryIO
 
@@ -288,20 +289,163 @@ def train_bpe(
 class BPETokenizer:
     def __init__(
         self,
-        vocab_size: int,
+        vocab: dict[int, bytes],
+        merges: list[tuple[bytes, bytes]],
+        special_tokens: list[str] | None = None,
     ):
+        """Byte Pair Encoding Tokenizer.
+
+        Args:
+            vocab (dict[int, bytes]): Vocabulary mapping from token IDs to token bytes.
+            merges (list[tuple[bytes, bytes]]): List of BPE merge operations. (token1, token2) merged.
+            special_tokens (list[str] | None, optional): List of special tokens. Defaults to None.
+        """
+        self.vocab = vocab
+        self.merges = merges
+        self.special_tokens = special_tokens or []
+
+    @classmethod
+    def from_files(
+        cls,
+        vocab_filepath: str | os.PathLike,
+        merges_filepath: str | os.PathLike,
+        special_tokens: list[str] | None = None,
+    ):
+        """Create a BPE tokenizer from vocabulary and merges files.
+
+        Args:
+            vocab_filepath (str | os.PathLike): Path to the vocabulary file.
+            merges_filepath (str | os.PathLike): Path to the merges file.
+            special_tokens (list[str] | None, optional): List of special tokens. Defaults to None.
+        """
         raise NotImplementedError
+
+    def encode(self, text: str) -> list[int]:
+        """Encode an input text into a sequence of token IDs.
+
+        Args:
+            text (str): The input text to encode.
+
+        Returns:
+            list[int]: The encoded sequence of token IDs.
+        """
+
+        vocab_reversed: dict[bytes, int] = {v: k for k, v in self.vocab.items()}
+        byte_pretokens: list[bytes] = pretokenize(
+            text, self.special_tokens, drop_special_token=False
+        )
+        byte_special_tokens = [token.encode("utf-8") for token in self.special_tokens]
+        pretokens: list[list[int]] = []
+
+        # Convert pretokens from bytes to list[int] by vocab
+        for i, pretoken in enumerate(byte_pretokens):
+            new_pretoken = []
+            if pretoken in byte_special_tokens:
+                index = vocab_reversed[pretoken]
+                new_pretoken.append(index)
+            else:
+                for b in pretoken:
+                    index = vocab_reversed[bytes([b])]
+                    new_pretoken.append(index)
+            pretokens.append(new_pretoken)
+
+        # Merge
+        for i, protoken in enumerate(pretokens):
+            for merge in self.merges:
+                new_pretoken = []
+                new_index = vocab_reversed[merge[0] + merge[1]]
+                j = 0
+                while j < len(pretoken):
+                    if (j < len(pretoken) - 1) and (
+                        (self.vocab[pretoken[j]], self.vocab[pretoken[j + 1]]) == merge
+                    ):
+                        new_pretoken.append(new_index)
+                        j += 2
+                    else:
+                        new_pretoken.append(pretoken[j])
+                        j += 1
+
+                pretoken = new_pretoken
+
+            pretokens[i] = pretoken
+
+        tokens = [token for pretoken in pretokens for token in pretoken]
+        return tokens
+
+    def encode_iterable(
+        self,
+        iterable: Iterable[str],
+    ) -> Iterator[int]:
+        """Given an iterable of strings (e.g., a Python file handle),
+        return a generator that lazily yields token IDs.
+        This is required for memory-eﬀicient tokenization of large files
+        that we cannot directly load into memory.
+
+        Args:
+            iterable (Iterable[str]): An iterable of strings to tokenize.
+
+        Yields:
+            Iterator[int]: A generator that yields token IDs.
+        """
+        for line in iterable:
+            for idx in self.encode(line):
+                yield from idx
+
+    def decode(self, ids: list[int]) -> str:
+        """Decode a sequence of token IDs into text.
+
+        Args:
+            ids (list[int]): The input sequence of token IDs.
+
+        Returns:
+            str: The decoded text.
+        """
+        tokens = b""
+        vocab_size = len(self.vocab)
+        replacement_char = "\ufffd"
+
+        for token_id in ids:
+            if token_id < vocab_size:
+                token = self.vocab[token_id]
+            else:
+                token = bytes(replacement_char, encoding="utf-8")
+
+            tokens += token
+
+        decoded_text = tokens.decode("utf-8", errors="replace")
+
+        return decoded_text
 
 
 def main():
-    test_file = "test.txt"
-    if not os.path.exists(test_file):
-        with open(test_file, "w") as f:
-            f.write("Hello <|endoftext|> world. This is a test file for BPE tokenizer.")
+    file_path = "./data/corpus.en"
+    vocab_size = 500
+    # special_tokens = ["<|endoftext|>"]
+    special_tokens = ["<|endoftext|>", "<|endoftext|><|endoftext|>"]
 
-    special_tokens = ["<|endoftext|>"]
-    vocab_size = 1000
-    vocab, merges = train_bpe(test_file, vocab_size, special_tokens)
+    vocab, merges = train_bpe(file_path, vocab_size, special_tokens)
+    tokenizer = BPETokenizer(vocab, merges, special_tokens)
+    # print(merges)
+
+    test_string = "Hello, how <|endoftext|><|endoftext|> are you?<|endoftext|>"
+    encoded = tokenizer.encode(test_string)
+    print("encoded:", encoded)
+    decoded = [tokenizer.decode([x]) for x in encoded]
+    print("decoded:", decoded)
+
+    print(test_string == decoded)
+
+
+def test():
+    import tiktoken
+
+    tokenizer = tiktoken.get_encoding("gpt2")
+    test_string = "Hello, how <|endoftext|><|endoftext|> are you?<|endoftext|>"
+    ids = tokenizer.encode(
+        test_string, allowed_special={"<|endoftext|><|endoftext|>", "<|endoftext|>"}
+    )
+    decoded = [tokenizer.decode([x]) for x in ids]
+    print(decoded)
 
 
 if __name__ == "__main__":
