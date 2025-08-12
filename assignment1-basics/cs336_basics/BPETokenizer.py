@@ -7,6 +7,7 @@ from typing import BinaryIO
 
 import regex as re
 from rich.logging import RichHandler
+from tqdm import tqdm  # type: ignore
 
 # Configure rich logging
 logging.basicConfig(
@@ -189,6 +190,10 @@ def train_bpe(
     input_path: str | os.PathLike,
     vocab_size: int,
     special_tokens: list[str],
+    *,
+    show_progress: bool = True,
+    progress_lib: str = "tqdm",  # or 'rich' in future
+    log_interval: int = 200,
     **kwargs,
 ) -> tuple[dict[int, bytes], list[tuple[bytes, bytes]]]:
     """Given the path to an input corpus, train a BPE tokenizer.
@@ -210,8 +215,13 @@ def train_bpe(
     """
     special_tokens = special_tokens or []
     num_merges = max(0, vocab_size - len(special_tokens) - 256)
+    if num_merges <= 0:
+        log.info(
+            f"No merges to perform (vocab_size={vocab_size}, special_tokens={len(special_tokens)}); returning byte-level vocab."
+        )
 
     # Initialize the vocabulary with special tokens
+    vocab = {}
     vocab = {x: bytes([x]) for x in range(256)}
     for i, token in enumerate(special_tokens):
         vocab[256 + i] = token.encode("utf-8")
@@ -220,9 +230,16 @@ def train_bpe(
     # chunk the file
     ## the number of processes is set to 4 by default
     num_processes = kwargs.get("num_processes", 4)
+    if num_processes < 1:
+        num_processes = 1
+    log.info(
+        f"Starting BPE training: vocab_size={vocab_size}, requested_merges={num_merges}, special_tokens={special_tokens}, processes={num_processes}"
+    )
     chunk_list = []
     with open(input_path, "rb") as f:
-        boundaries = find_chunk_boundaries(f, num_processes, b"<|endoftext|>")
+        boundaries = find_chunk_boundaries(
+            f, num_processes, "<|endoftext|>".encode("utf-8")
+        )
 
         for start, end in zip(boundaries[:-1], boundaries[1:]):
             f.seek(start)
@@ -243,13 +260,23 @@ def train_bpe(
         p.start()
         processes.append(p)
 
-    pretokens_list = [q.get() for _ in processes]
+    # Collect pretokenization results with optional progress
+    pretokens_list = []
+    if show_progress and progress_lib == "tqdm" and tqdm is not None:
+        for _ in tqdm(range(len(processes)), desc="Pretokenizing", leave=False):
+            pretokens_list.append(q.get())
+    else:
+        for _ in range(len(processes)):
+            pretokens_list.append(q.get())
 
     for p in processes:
         p.join()
 
     pretokens = [token for tokens in pretokens_list for token in tokens]
-    log.info(f"Total pretokens: {len(pretokens)}")
+    log.debug(f"Total pretokens: {len(pretokens)}")
+    log.info(
+        f"Pretokenization complete: {len(pretokens)} pretokens across {len(pretokens_list)} chunks"
+    )
     # Merge pretokens into a single string
     counts = defaultdict(int)
     ## store pretoken location for each pair
@@ -258,8 +285,16 @@ def train_bpe(
         for index1, index2 in zip(pretoken, pretoken[1:]):
             counts[index1, index2] += 1
             index_dict[index1, index2].add(j)
-    for i in range(num_merges):
-        # for i in range(5):
+    log.info("Beginning merge loop ...")
+    merge_iterable = range(num_merges)
+    using_tqdm = False
+    if show_progress and num_merges > 0:
+        if progress_lib == "tqdm" and tqdm is not None:
+            merge_iterable = tqdm(merge_iterable, desc="Merging BPE", leave=True)
+            using_tqdm = True
+        # (Hook for future 'rich' progress implementation if desired)
+
+    for i in merge_iterable:  # type: ignore[assignment]
         # Prefer lexicographically greater tokens
         max_pair = max(
             counts.items(),
@@ -274,7 +309,7 @@ def train_bpe(
         new_index = 256 + len(special_tokens) + i
         vocab[new_index] = vocab[index1] + vocab[index2]
         merges.append((vocab[index1], vocab[index2]))
-        log.info(
+        log.debug(
             f"Counts: {counts}, \n"
             f"index_dict: {index_dict}, \n"
             f"pretokens: {pretokens}, \n"
@@ -282,6 +317,16 @@ def train_bpe(
             f"new_index: {new_index}"
         )
         merge(counts, index_dict, pretokens, max_pair, new_index)
+
+        # Periodic logging (avoid flooding logs when tqdm already showing)
+        if (not using_tqdm) and (log_interval > 0) and ((i + 1) % log_interval == 0):
+            log.info(
+                f"Merge {i + 1}/{num_merges}: new_token_id={new_index}, pair={max_pair}, vocab_size={len(vocab)}"
+            )
+
+    log.info(
+        f"Merge loop finished: total_merges={num_merges}, final_vocab_size={len(vocab)}"
+    )
 
     return (vocab, merges)
 
@@ -350,7 +395,7 @@ class BPETokenizer:
             pretokens.append(new_pretoken)
 
         # Merge
-        for i, protoken in enumerate(pretokens):
+        for i, pretoken in enumerate(pretokens):
             for merge in self.merges:
                 new_pretoken = []
                 new_index = vocab_reversed[merge[0] + merge[1]]
@@ -389,7 +434,7 @@ class BPETokenizer:
         """
         for line in iterable:
             for idx in self.encode(line):
-                yield from idx
+                yield idx
 
     def decode(self, ids: list[int]) -> str:
         """Decode a sequence of token IDs into text.
@@ -400,7 +445,7 @@ class BPETokenizer:
         Returns:
             str: The decoded text.
         """
-        tokens = b""
+        tokens = bytes()
         vocab_size = len(self.vocab)
         replacement_char = "\ufffd"
 
@@ -418,7 +463,7 @@ class BPETokenizer:
 
 
 def main():
-    file_path = "./data/corpus.en"
+    file_path = "./tests/fixtures/corpus.en"
     vocab_size = 500
     # special_tokens = ["<|endoftext|>"]
     special_tokens = ["<|endoftext|>", "<|endoftext|><|endoftext|>"]
@@ -429,11 +474,11 @@ def main():
 
     test_string = "Hello, how <|endoftext|><|endoftext|> are you?<|endoftext|>"
     encoded = tokenizer.encode(test_string)
-    print("encoded:", encoded)
+    log.info(f"encoded: {encoded}")
     decoded = [tokenizer.decode([x]) for x in encoded]
-    print("decoded:", decoded)
+    log.info(f"decoded: {decoded}")
 
-    print(test_string == decoded)
+    log.info(f"{test_string} == {decoded}")
 
 
 def test():
@@ -445,8 +490,9 @@ def test():
         test_string, allowed_special={"<|endoftext|><|endoftext|>", "<|endoftext|>"}
     )
     decoded = [tokenizer.decode([x]) for x in ids]
-    print(decoded)
+    log.info(decoded)
 
 
 if __name__ == "__main__":
     main()
+    # test()
