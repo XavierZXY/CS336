@@ -123,6 +123,7 @@ def pretokenize(
     return tokens
 
 
+# TODO: Speed up
 def merge(
     counts: dict[tuple[int, int], int],
     index_dict: dict[tuple[int, int], set[int]],
@@ -165,6 +166,8 @@ def merge(
 
             if pos > 0:
                 # deal with the left position
+                # special case: max_pairs: {a, b, x, y, x, y, c, d}, after merge,
+                # the number of (y,x) should decrease
                 if new_pretoken[pos - 1] == new_index:
                     counts[(max_pair[1], max_pair[0])] -= 1
                 else:
