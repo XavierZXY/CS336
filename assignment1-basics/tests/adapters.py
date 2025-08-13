@@ -93,7 +93,14 @@ def run_swiglu(
     # swiglu.w1.weight.data = w1_weight
     # swiglu.w2.weight.data = w2_weight
     # swiglu.w3.weight.data = w3_weight
-    raise NotImplementedError
+    from cs336_basics.positionwise_feed_forward import PositionwiseFeedForward
+
+    swiglu = PositionwiseFeedForward(d_model, d_ff)
+    swiglu.w1.weight.data.copy_(w1_weight)
+    swiglu.w2.weight.data.copy_(w2_weight)
+    swiglu.w3.weight.data.copy_(w3_weight)
+    output = swiglu(in_features)
+    return output
 
 
 def run_scaled_dot_product_attention(
@@ -388,7 +395,12 @@ def run_rmsnorm(
         Float[Tensor,"... d_model"]: Tensor of with the same shape as `in_features` with the output of running
         RMSNorm of the `in_features`.
     """
-    raise NotImplementedError
+    from cs336_basics.rmsnorm import RMSNorm
+
+    model = RMSNorm(d_model, eps)
+    model.weight.data.copy_(weights)
+    output = model(in_features)
+    return output
 
 
 def run_silu(in_features: Float[Tensor, " ..."]) -> Float[Tensor, " ..."]:
@@ -402,7 +414,10 @@ def run_silu(in_features: Float[Tensor, " ..."]) -> Float[Tensor, " ..."]:
         Float[Tensor,"..."]: of with the same shape as `in_features` with the output of applying
         SiLU to each element.
     """
-    raise NotImplementedError
+    from cs336_basics.positionwise_feed_forward import silu
+
+    output = silu(in_features)
+    return output
 
 
 def run_get_batch(
