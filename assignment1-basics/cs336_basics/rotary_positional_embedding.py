@@ -36,9 +36,9 @@ class RotaryPositionalEmbedding(nn.Module):
         self, theta: float, block_index: int, seq_pos: int, d_k: int
     ) -> torch.Tensor:
         """Generate a rotation matrix for a specific block and sequence position.
-
+        angle = \frac{seq\_pos}{\theta^{2 \cdot block\_index / d\_k}}
         Args:
-            theta (float): Rotation angle
+            theta (float): Base rotation angle default to 10000.0
             block_index (int): Block index
             seq_pos (int): Sequence position
             d_k (int): Dimension of the key
