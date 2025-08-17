@@ -305,7 +305,27 @@ def run_transformer_block(
         Float[Tensor, "batch sequence_length d_model"] Tensor with the output of
         running the Transformer block on the input features while using RoPE.
     """
-    raise NotImplementedError
+    from cs336_basics.transformer import Transformer
+
+    model = Transformer(
+        d_model=d_model,
+        num_heads=num_heads,
+        d_ff=d_ff,
+        max_seq_len=max_seq_len,
+        theta=theta,
+    )
+    model.attn.q_proj.weight.data.copy_(weights["attn.q_proj.weight"])
+    model.attn.k_proj.weight.data.copy_(weights["attn.k_proj.weight"])
+    model.attn.v_proj.weight.data.copy_(weights["attn.v_proj.weight"])
+    model.attn.o_proj.weight.data.copy_(weights["attn.output_proj.weight"])
+    model.rms_norm1.weight.data.copy_(weights["ln1.weight"])
+    model.ff.w1.weight.data.copy_(weights["ffn.w1.weight"])
+    model.ff.w2.weight.data.copy_(weights["ffn.w2.weight"])
+    model.ff.w3.weight.data.copy_(weights["ffn.w3.weight"])
+    model.rms_norm2.weight.data.copy_(weights["ln2.weight"])
+
+    output = model(in_features)
+    return output
 
 
 def run_transformer_lm(
@@ -387,7 +407,54 @@ def run_transformer_lm(
         Float[Tensor, "batch_size sequence_length vocab_size"]: Tensor with the predicted unnormalized
         next-word distribution for each token.
     """
-    raise NotImplementedError
+    from cs336_basics.transformer import TransformerLM
+
+    model = TransformerLM(
+        vocab_size=vocab_size,
+        context_length=context_length,
+        d_model=d_model,
+        num_layers=num_layers,
+        num_heads=num_heads,
+        d_ff=d_ff,
+        rope_theta=rope_theta,
+    )
+
+    model.token_embeddings.weight.data.copy_(weights["token_embeddings.weight"])
+
+    for layer_idx in range(num_layers):
+        model.layers[layer_idx].attn.q_proj.weight.data.copy_(
+            weights[f"layers.{layer_idx}.attn.q_proj.weight"]
+        )
+        model.layers[layer_idx].attn.k_proj.weight.data.copy_(
+            weights[f"layers.{layer_idx}.attn.k_proj.weight"]
+        )
+        model.layers[layer_idx].attn.v_proj.weight.data.copy_(
+            weights[f"layers.{layer_idx}.attn.v_proj.weight"]
+        )
+        model.layers[layer_idx].attn.o_proj.weight.data.copy_(
+            weights[f"layers.{layer_idx}.attn.output_proj.weight"]
+        )
+        model.layers[layer_idx].rms_norm1.weight.data.copy_(
+            weights[f"layers.{layer_idx}.ln1.weight"]
+        )
+        model.layers[layer_idx].ff.w1.weight.data.copy_(
+            weights[f"layers.{layer_idx}.ffn.w1.weight"]
+        )
+        model.layers[layer_idx].ff.w2.weight.data.copy_(
+            weights[f"layers.{layer_idx}.ffn.w2.weight"]
+        )
+        model.layers[layer_idx].ff.w3.weight.data.copy_(
+            weights[f"layers.{layer_idx}.ffn.w3.weight"]
+        )
+        model.layers[layer_idx].rms_norm2.weight.data.copy_(
+            weights[f"layers.{layer_idx}.ln2.weight"]
+        )
+
+    model.rms_norm.weight.data.copy_(weights["ln_final.weight"])
+    model.output_embeddings.weight.data.copy_(weights["lm_head.weight"])
+
+    output = model(in_indices)
+    return output
 
 
 def run_rmsnorm(
