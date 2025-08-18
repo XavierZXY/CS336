@@ -54,8 +54,7 @@ p_{theta}(x_{i+1} | x_i) = softmax(o_{i})_{x_{i+1}}= \frac{\exp{o_{i_{x_{i+1}}}}
 \\
 -log p_{theta}(x_{i+1} | x_i) = -\log \left( \frac{\exp{o_{i_{x_{i+1}}}}}{\sum_{j} \exp({o_{i}[a]})} \right) = -o_{i_{x_{i+1}}} + \log \left( \sum_{j} \exp({o_{i}[a]}) \right)
 $$
-$$
-$$
+
 # Cite
 
 ```
