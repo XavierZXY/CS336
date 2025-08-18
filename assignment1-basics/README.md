@@ -45,6 +45,9 @@ Rope是这里最难理解的一个部分。我参考了以下文章来进行学�
 > [一文看懂 LLaMA 中的旋转式位置编码](https://zhuanlan.zhihu.com/p/642884818)
 > [十分钟读懂旋转编码（RoPE）](https://zhuanlan.zhihu.com/p/647109286)
 
+## Trainging a Transformer LM
+### Training Process
+
 # Cite
 
 ```
