@@ -47,7 +47,15 @@ Rope是这里最难理解的一个部分。我参考了以下文章来进行学�
 
 ## Trainging a Transformer LM
 ### Training Process
-
+#### cross-entropy loss
+$$
+l(\theta, D) = \frac{1}{|D|m} \sum_{(x \in D} -\log p_{theta}(x_{i+1} | x_i) \\
+p_{theta}(x_{i+1} | x_i) = softmax(o_{i})_{x_{i+1}}= \frac{\exp{o_{i_{x_{i+1}}}}}{\sum_{j} \exp({o_{i}[a]})}
+\\
+-log p_{theta}(x_{i+1} | x_i) = -\log \left( \frac{\exp{o_{i_{x_{i+1}}}}}{\sum_{j} \exp({o_{i}[a]})} \right) = -o_{i_{x_{i+1}}} + \log \left( \sum_{j} \exp({o_{i}[a]}) \right)
+$$
+$$
+$$
 # Cite
 
 ```
