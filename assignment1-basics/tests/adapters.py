@@ -573,7 +573,9 @@ def run_gradient_clipping(
 
     The gradients of the parameters (parameter.grad) should be modified in-place.
     """
-    raise NotImplementedError
+    from cs336_basics.grid_clipping import clip_grad_norm
+
+    clip_grad_norm(parameters, max_l2_norm)
 
 
 def get_adamw_cls() -> Any:
@@ -619,7 +621,7 @@ def run_get_lr_cosine_schedule(
         warmup_steps=warmup_iters,
         cosine_steps=cosine_cycle_iters,
     )
-    return scheduler.get_lr()
+    return scheduler()
 
 
 def run_save_checkpoint(
