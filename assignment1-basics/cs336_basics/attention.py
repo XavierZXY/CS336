@@ -6,23 +6,7 @@ from einops import einsum, rearrange
 
 from .linear import Linear
 from .rotary_positional_embedding import RotaryPositionalEmbedding
-
-
-def softmax(x: torch.Tensor, dim: int) -> torch.Tensor:
-    """Given a tensor of inputs, return the output of softmaxing the given `dim` of the input.
-
-    Args:
-        x (torch.Tensor): Input features to softmax.
-        dim (int): Dimension to softmax over.
-
-    Returns:
-        torch.Tensor: Softmax output.
-    """
-    x_max = torch.max(x, dim, keepdim=True).values
-    x_stable = x - x_max
-    x_exp = torch.exp(x_stable)
-    output = x_exp / torch.sum(x_exp, dim=dim, keepdim=True)
-    return output
+from .utils import softmax
 
 
 def scaled_dot_product_attention(
