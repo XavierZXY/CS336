@@ -2,7 +2,7 @@
 
 ## Todo list
 - [ ] Speed up the BPE algorithm.
-
+- [ ] full train loop
 ## Train BPE Tokenizer
 > [BPE tokenizer](cs336_basics/BPETokenizer.py)
 
